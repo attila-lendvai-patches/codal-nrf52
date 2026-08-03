@@ -16,7 +16,7 @@ extern int8_t target_get_irq_disabled();
  *
  **/
 NRF52Serial::NRF52Serial(Pin& tx, Pin& rx, NRF_UARTE_Type* device) 
- : Serial(tx, rx), is_tx_in_progress_(false), bytesProcessed(0), p_uarte_(NULL)
+ : Serial(tx, rx), is_tx_in_progress_(false), bytesProcessed(0), txWatchdogCount(0), p_uarte_(NULL)
 {
     if(device != NULL)
         p_uarte_ = (NRF_UARTE_Type*)allocate_peripheral((void*)device);
@@ -91,6 +91,11 @@ NRF52Serial::~NRF52Serial()
     nrf_uarte_txrx_pins_disconnect(p_uarte_);
 
     free_alloc_peri(p_uarte_);
+}
+
+uint32_t NRF52Serial::getTxWatchdogCount() const
+{
+    return txWatchdogCount;
 }
 
 void NRF52Serial::_irqHandler(void *self_)
@@ -234,6 +239,10 @@ int NRF52Serial::putc(char c)
         // ~300ms, force-STOPTX so a wedged transfer cannot hang the whole system.
         if (++spin > 2000000)
         {
+            // Log the first recovery and subsequent ones at powers of two, so a
+            // persistent wedge cannot flood the DMESG buffer.
+            if (++txWatchdogCount == 1 || (txWatchdogCount & (txWatchdogCount - 1)) == 0)
+                DMESG("NRF52Serial: TX watchdog fired (%d times)", (uint32_t)txWatchdogCount);
             spin = 0;
             nrf_uarte_task_trigger(p_uarte_, NRF_UARTE_TASK_STOPTX);
             uint32_t w = 0;

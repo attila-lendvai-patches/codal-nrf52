@@ -18,6 +18,7 @@ namespace codal
     {
         volatile bool is_tx_in_progress_;
         volatile int  bytesProcessed;
+        volatile uint32_t txWatchdogCount;
         uint8_t dmaBuffer[CONFIG_SERIAL_DMA_BUFFER_SIZE];
 
         NRF_UARTE_Type *p_uarte_;
@@ -71,6 +72,13 @@ namespace codal
         virtual int putc(char) override;
         virtual int getc() override;
         virtual int setBaudrate(uint32_t baudrate) override;
+
+        /**
+          * Returns the number of times the TX watchdog has recovered a wedged
+          * transfer (see putc()). The counter is incremented on every recovery,
+          * regardless of whether a DMESG message was emitted.
+          */
+        uint32_t getTxWatchdogCount() const;
 
         /**
           * Puts the component in (or out of) sleep (low power) mode.
