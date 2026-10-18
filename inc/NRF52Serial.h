@@ -6,53 +6,26 @@
 #include "CodalComponent.h"
 #include "CodalConfig.h"
 #include "Serial.h"
-#include "hal/nrf_uarte.h"
-
-#ifndef CONFIG_SERIAL_DMA_BUFFER_SIZE
-#define CONFIG_SERIAL_DMA_BUFFER_SIZE   32
-#endif
+#include "hal/nrf_uart.h"
 
 namespace codal
 {
+    /**
+     * The serial port on UART0, run without EasyDMA.
+     *
+     * With DMA the received bytes can only be counted by RXDRDY, a flag
+     * that rises once however many bytes arrived while the interrupt
+     * waited, so a late interrupt left bytes behind until more came.
+     * Without DMA each byte is read from RXD, and RXDRDY rises again for
+     * the next one in the six-byte FIFO. UART0 is the only UARTE instance
+     * that can run this way.
+     */
     class NRF52Serial : public Serial
     {
         volatile bool is_tx_in_progress_;
-        volatile int  bytesProcessed;
-#if DEVICE_DMESG_BUFFER_SIZE > 0
-        volatile uint32_t txWatchdogCount;
-#endif
-        uint8_t dmaBuffer[CONFIG_SERIAL_DMA_BUFFER_SIZE];
 
-        NRF_UARTE_Type *p_uarte_;
+        NRF_UART_Type *p_uart_;
         static void _irqHandler(void *self);
-
-        /**
-         * Ensures all characters have been processed once a DMA buffer is fully received.
-         *
-         * This function is called upon an ENDRX hardware event, which is raised when a RX DMA buffer
-         * has been filled. Normally there is nothing to do, but in the eventuality that an interrupt has been
-         * missed (typically due to CPU contention), this function ensures the codal Serial ringbuffer is synchronised
-         * and no characters are lost.
-         */
-        void updateRxBufferAfterENDRX();
-
-        /**
-          * Update DMA RX buffer pointer.
-          * 
-          * UARTE generates an RXSTARTED event once the DMA buffer geometry has been read.
-          * This function implements a DMA enabled double buffer within the codal Serial ringbuffer.
-        **/
-        void updateRxBufferAfterRXSTARTED();
-
-        /**
-          * DMA version of Serial::dataReceviced()
-          * 
-          * In the A function, only the part of getting data through the getc() function
-          * and storing it in the ring buffer is removed.
-          * Because DMA stores data directly in the buffer, 
-          * this function only manages the ring buffer. (With Event function)
-        **/
-        void dataReceivedDMA();        
 
         protected:
         virtual int enableInterrupt(SerialInterruptType t) override;
@@ -67,6 +40,8 @@ namespace codal
          * @param tx the pin instance to use for transmission
          *
          * @param rx the pin instance to use for reception
+         *
+         * @param device NRF_UARTE0, the only one that will do; NULL means it too
          *
          **/
         NRF52Serial(Pin& tx, Pin& rx, NRF_UARTE_Type* device = NULL);
